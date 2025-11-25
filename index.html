@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>硬核飞控 | 200元直尺无人机项目</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Three.js (r128) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['-apple-system', 'BlinkMacSystemFont', '"SF Pro Display"', '"Segoe UI"', 'Roboto', 'sans-serif'],
+                        mono: ['"SF Mono"', 'Menlo', 'Monaco', 'Consolas', 'monospace'],
+                    },
+                    colors: {
+                        ios: {
+                            blue: '#007AFF',
+                            green: '#34C759',
+                            red: '#FF3B30',
+                            dark: 'rgba(28, 28, 30, 0.8)',
+                        }
+                    },
+                    animation: {
+                        'fade-in-down': 'fadeInDown 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+                        'fade-in-up': 'fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+                    },
+                    keyframes: {
+                        fadeInDown: {
+                            '0%': { opacity: 0, transform: 'translateY(-20px) translateX(-50%)' },
+                            '100%': { opacity: 1, transform: 'translateY(0) translateX(-50%)' },
+                        },
+                        fadeInUp: {
+                            '0%': { opacity: 0, transform: 'translateY(20px)' },
+                            '100%': { opacity: 1, transform: 'translateY(0)' },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* 全局样式 */
+        html, body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            overflow-x: hidden;
+            scroll-behavior: smooth;
+        }
+
+        /* 导航栏毛玻璃 */
+        .glass-nav {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(30px) saturate(180%);
+            -webkit-backdrop-filter: blur(30px) saturate(180%);
+            border: 1px solid rgba(200, 200, 200, 0.3);
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.05);
+        }
+        .dark .glass-nav {
+            background: rgba(30, 30, 30, 0.85);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.4);
+        }
+
+        /* 内容卡片 */
+        .glass-card {
+            background: rgba(255, 255, 255, 0.65);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            box-shadow: 0 8px 32px rgba(31, 38, 135, 0.05);
+            transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
+        }
+        .dark .glass-card {
+            background: rgba(20, 20, 20, 0.65);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        }
+
+        /* 导航指示器 */
+        #nav-indicator {
+            position: absolute;
+            height: 100%;
+            border-radius: 9999px;
+            background-color: rgba(0, 0, 0, 0.06);
+            transition: all 0.5s cubic-bezier(0.23, 1, 0.32, 1);
+            z-index: 0;
+            pointer-events: none;
+        }
+        .dark #nav-indicator {
+            background-color: rgba(255, 255, 255, 0.15);
+        }
+        
+        .nav-link { position: relative; z-index: 1; }
+
+        /* 3D 背景 */
+        #canvas-container { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none; }
+        
+        /* 视图切换动画 */
+        .view-container {
+            transition: opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1), transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            min-height: 100vh;
+        }
+        .view-hidden {
+            opacity: 0;
+            pointer-events: none;
+            transform: scale(0.95);
+            visibility: hidden;
+        }
+        .view-visible {
+            opacity: 1;
+            pointer-events: auto;
+            transform: scale(1);
+            visibility: visible;
+        }
+
+        /* 解析板块 Grid 线条 */
+        .grid-lines {
+            background-image: linear-gradient(to right, rgba(0,0,0,0.05) 1px, transparent 1px),
+                              linear-gradient(to bottom, rgba(0,0,0,0.05) 1px, transparent 1px);
+            background-size: 40px 40px;
+        }
+        .dark .grid-lines {
+            background-image: linear-gradient(to right, rgba(255,255,255,0.05) 1px, transparent 1px),
+                              linear-gradient(to bottom, rgba(255,255,255,0.05) 1px, transparent 1px);
+        }
+        
+        .gallery-item {
+            transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        .gallery-item:hover {
+            transform: scale(1.03);
+            z-index: 10;
+        }
+    </style>
+</head>
+<body class="font-sans text-gray-900 dark:text-gray-100 antialiased bg-gray-50 dark:bg-gray-900 transition-colors duration-500 selection:bg-ios-blue selection:text-white overflow-x-hidden">
+
+    <!-- Loading Screen -->
+    <div id="loading-screen" class="fixed inset-0 bg-black z-[100] flex flex-col justify-center items-center transition-opacity duration-700">
+        <div class="text-white text-center space-y-4">
+            <i class="fa-solid fa-circle-notch fa-spin text-4xl text-ios-blue"></i>
+            <div class="text-lg font-light tracking-wide opacity-80">Loading Experience...</div>
+        </div>
+    </div>
+
+    <!-- 3D Background -->
+    <div id="canvas-container"></div>
+
+    <!-- Navigation Bar -->
+    <nav class="fixed top-6 left-1/2 transform -translate-x-1/2 z-50 w-[92%] max-w-5xl opacity-0 animate-fade-in-down">
+        <div class="glass-nav rounded-full px-3 py-2 flex justify-between items-center transition-all duration-300">
+            
+            <!-- Logo -->
+            <div class="flex items-center gap-3 pl-2 cursor-pointer group" onclick="handleNav('home-view')">
+                <div class="w-9 h-9 bg-black dark:bg-white rounded-full flex items-center justify-center text-white dark:text-black shadow-lg group-hover:rotate-12 transition-transform duration-500">
+                    <i class="fa-solid fa-plane-up text-sm"></i>
+                </div>
+                <span class="font-bold text-lg tracking-tight hidden sm:block">Ruler<span class="font-light">FPV</span></span>
+            </div>
+
+            <!-- Desktop Menu -->
+            <div class="hidden md:flex items-center relative bg-transparent rounded-full p-1">
+                <div id="nav-indicator" class="opacity-0 w-0 left-0"></div>
+                
+                <button onclick="handleNav('home-view'); moveIndicator(this)" class="nav-link px-5 py-2 rounded-full text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-black dark:hover:text-white transition-colors">概览</button>
+                <button onclick="handleNav('specs'); moveIndicator(this)" class="nav-link px-5 py-2 rounded-full text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-black dark:hover:text-white transition-colors">配置</button>
+                <button onclick="handleNav('details'); moveIndicator(this)" class="nav-link px-5 py-2 rounded-full text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-black dark:hover:text-white transition-colors">解析</button>
+                <button onclick="handleNav('steps'); moveIndicator(this)" class="nav-link px-5 py-2 rounded-full text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-black dark:hover:text-white transition-colors">教程</button>
+                <button onclick="handleNav('gallery'); moveIndicator(this)" class="nav-link px-5 py-2 rounded-full text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-black dark:hover:text-white transition-colors">相册</button>
+            </div>
+
+            <!-- Right Actions -->
+            <div class="flex items-center gap-2 pr-1">
+                <button onclick="toggleDarkMode()" class="w-10 h-10 rounded-full hover:bg-gray-200/50 dark:hover:bg-gray-700/50 flex items-center justify-center transition-colors duration-300">
+                    <i class="fa-solid fa-moon dark:hidden text-gray-600"></i>
+                    <i class="fa-solid fa-sun hidden dark:block text-yellow-400"></i>
+                </button>
+                <button id="mobile-menu-btn" class="md:hidden w-10 h-10 rounded-full hover:bg-gray-200/50 dark:hover:bg-gray-700/50 flex items-center justify-center transition-colors">
+                    <i class="fa-solid fa-bars text-gray-600 dark:text-gray-300"></i>
+                </button>
+                <button onclick="handleNav('steps')" class="hidden sm:flex bg-ios-blue text-white px-6 py-2.5 rounded-full text-sm font-semibold shadow-lg hover:shadow-blue-500/30 hover:scale-105 active:scale-95 transition-all duration-300">
+                    Start DIY
+                </button>
+            </div>
+        </div>
+
+        <!-- Mobile Menu -->
+        <div id="mobile-menu" class="glass-nav mt-3 rounded-3xl overflow-hidden transition-all duration-300 max-h-0 opacity-0 origin-top">
+            <div class="p-2 space-y-1">
+                <button onclick="handleNav('home-view'); closeMobileMenu()" class="block w-full text-left px-6 py-3 rounded-2xl hover:bg-gray-100 dark:hover:bg-white/10 transition font-medium">首页</button>
+                <button onclick="handleNav('specs'); closeMobileMenu()" class="block w-full text-left px-6 py-3 rounded-2xl hover:bg-gray-100 dark:hover:bg-white/10 transition font-medium">配置清单</button>
+                <button onclick="handleNav('details'); closeMobileMenu()" class="block w-full text-left px-6 py-3 rounded-2xl hover:bg-gray-100 dark:hover:bg-white/10 transition font-medium">组件解析</button>
+                <button onclick="handleNav('steps'); closeMobileMenu()" class="block w-full text-left px-6 py-3 rounded-2xl hover:bg-gray-100 dark:hover:bg-white/10 transition font-medium">制作教程</button>
+                <button onclick="handleNav('gallery'); closeMobileMenu()" class="block w-full text-left px-6 py-3 rounded-2xl hover:bg-gray-100 dark:hover:bg-white/10 transition font-medium">实飞相册</button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Content Area (Main View) -->
+    <div id="home-view" class="view-container view-visible">
+        
+        <!-- Hero Section -->
+        <section class="min-h-screen flex flex-col justify-center items-center text-center relative px-4 pt-20 pointer-events-none">
+            <div class="animate-fade-in-up pointer-events-auto z-10" style="animation-delay: 0.1s;">
+                <span class="px-4 py-1.5 rounded-full border border-gray-200 dark:border-white/10 bg-white/50 dark:bg-white/5 backdrop-blur-md text-sm font-medium mb-8 inline-block text-gray-600 dark:text-gray-300 shadow-sm">
+                    🚀 极客精神 · 200元挑战
+                </span>
+                <h1 class="text-6xl md:text-8xl font-bold tracking-tight mb-6 text-gray-900 dark:text-white drop-shadow-sm">
+                    直尺 · <span class="text-transparent bg-clip-text bg-gradient-to-r from-ios-blue to-purple-500">飞行</span>
+                </h1>
+                <p class="max-w-2xl mx-auto text-xl text-gray-600 dark:text-gray-300 font-light leading-relaxed mb-10 glass-card p-4 rounded-2xl">
+                    用最简单的文具，挑战物理极限。<br>
+                    搭载专业级 F3 飞控与强劲无刷动力，重新定义入门 FPV。
+                </p>
+                <div class="flex gap-4 justify-center">
+                    <button onclick="handleNav('details')" class="glass-card px-8 py-3.5 rounded-full font-semibold hover:bg-white dark:hover:bg-white/20 transition-all active:scale-95 shadow-sm text-gray-900 dark:text-white">
+                        探索构造
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <div class="h-[15vh]"></div>
+
+        <!-- Rich Specs Section -->
+        <section id="specs" class="py-24 px-4 max-w-7xl mx-auto">
+            <div class="text-center mb-16">
+                <h2 class="text-4xl font-bold mb-4">硬核配置清单</h2>
+                <p class="text-gray-500">每一分钱都花在刀刃上，压榨极致性能</p>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <!-- Cards for Specs -->
+                <div class="glass-card p-8 rounded-[2rem] hover:-translate-y-2 transition duration-500 group">
+                    <div class="w-14 h-14 rounded-2xl bg-red-500/10 flex items-center justify-center text-red-500 mb-6 group-hover:scale-110 transition-transform">
+                        <i class="fa-solid fa-fan text-3xl"></i>
+                    </div>
+                    <h3 class="text-2xl font-bold mb-2">动力系统</h3>
+                    <div class="space-y-2 text-gray-600 dark:text-gray-300 text-sm mt-4">
+                        <div class="flex justify-between border-b border-gray-200 dark:border-gray-700 pb-1"><span>型号</span> <span class="font-mono font-bold">2212</span></div>
+                        <div class="flex justify-between border-b border-gray-200 dark:border-gray-700 pb-1"><span>KV值</span> <span class="font-mono font-bold">930KV</span></div>
+                        <div class="flex justify-between border-b border-gray-200 dark:border-gray-700 pb-1"><span>拉力</span> <span class="font-mono font-bold">>800g/轴</span></div>
+                        <div class="flex justify-between pb-1"><span>桨叶</span> <span class="font-mono font-bold">1045</span></div>
+                    </div>
+                </div>
+                
+                <div class="glass-card p-8 rounded-[2rem] hover:-translate-y-2 transition duration-500 group">
+                    <div class="w-14 h-14 rounded-2xl bg-yellow-500/10 flex items-center justify-center text-yellow-500 mb-6 group-hover:scale-110 transition-transform">
+                        <i class="fa-solid fa-bolt text-3xl"></i>
+                    </div>
+                    <h3 class="text-2xl font-bold mb-2">电子调速</h3>
+                    <div class="space-y-2 text-gray-600 dark:text-gray-300 text-sm mt-4">
+                        <div class="flex justify-between border-b border-gray-200 dark:border-gray-700 pb-1"><span>电流</span> <span class="font-mono font-bold">30A</span></div>
+                        <div class="flex justify-between border-b border-gray-200 dark:border-gray-700 pb-1"><span>固件</span> <span class="font-mono font-bold">BLHeli_S</span></div>
+                        <div class="flex justify-between border-b border-gray-200 dark:border-gray-700 pb-1"><span>输入</span> <span class="font-mono font-bold">2-4S LiPo</span></div>
+                        <div class="flex justify-between pb-1"><span>BEC</span> <span class="font-mono font-bold">5V/2A</span></div>
+                    </div>
+                </div>
+
+                <div class="glass-card p-8 rounded-[2rem] hover:-translate-y-2 transition duration-500 group">
+                    <div class="w-14 h-14 rounded-2xl bg-green-500/10 flex items-center justify-center text-green-500 mb-6 group-hover:scale-110 transition-transform">
+                        <i class="fa-solid fa-microchip text-3xl"></i>
+                    </div>
+                    <h3 class="text-2xl font-bold mb-2">飞行控制</h3>
+                    <div class="space-y-2 text-gray-600 dark:text-gray-300 text-sm mt-4">
+                        <div class="flex justify-between border-b border-gray-200 dark:border-gray-700 pb-1"><span>核心</span> <span class="font-mono font-bold">STM32 F3</span></div>
+                        <div class="flex justify-between border-b border-gray-200 dark:border-gray-700 pb-1"><span>IMU</span> <span class="font-mono font-bold">MPU6000</span></div>
+                        <div class="flex justify-between border-b border-gray-200 dark:border-gray-700 pb-1"><span>OSD</span> <span class="font-mono font-bold">集成</span></div>
+                        <div class="flex justify-between pb-1"><span>调参</span> <span class="font-mono font-bold">Betaflight</span></div>
+                    </div>
+                </div>
+
+                <div class="glass-card p-8 rounded-[2rem] hover:-translate-y-2 transition duration-500 group">
+                    <div class="w-14 h-14 rounded-2xl bg-blue-500/10 flex items-center justify-center text-ios-blue mb-6 group-hover:scale-110 transition-transform">
+                        <i class="fa-solid fa-ruler-combined text-3xl"></i>
+                    </div>
+                    <h3 class="text-2xl font-bold mb-2">机架结构</h3>
+                    <div class="space-y-2 text-gray-600 dark:text-gray-300 text-sm mt-4">
+                        <div class="flex justify-between border-b border-gray-200 dark:border-gray-700 pb-1"><span>材质</span> <span class="font-mono font-bold">有机玻璃</span></div>
+                        <div class="flex justify-between border-b border-gray-200 dark:border-gray-700 pb-1"><span>轴距</span> <span class="font-mono font-bold">450mm</span></div>
+                        <div class="flex justify-between border-b border-gray-200 dark:border-gray-700 pb-1"><span>重量</span> <span class="font-mono font-bold">280g</span></div>
+                        <div class="flex justify-between pb-1"><span>成本</span> <span class="font-mono font-bold">¥5.00</span></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Details Section -->
+        <section id="details" class="py-32 px-4 text-center">
+            <h2 class="text-5xl font-bold mb-6 tracking-tight">OPENAI</h2>
+            <p class="text-xl text-gray-500 dark:text-gray-400 font-light">Precision engineering with everyday objects.</p>
+            <div class="h-64"></div> 
+        </section>
+
+        <!-- Tutorial Section -->
+        <section id="steps" class="py-24 px-4">
+            <div class="max-w-4xl mx-auto">
+                <h2 class="text-4xl font-bold mb-20 text-center">构建全流程</h2>
+                <div class="space-y-16 relative before:absolute before:left-[27px] before:top-4 before:h-[95%] before:w-0.5 before:bg-gray-200 dark:before:bg-gray-800">
+                    
+                    <div class="relative pl-24 group">
+                        <div class="absolute left-0 top-0 w-14 h-14 rounded-full bg-white dark:bg-black border-4 border-gray-100 dark:border-gray-800 text-black dark:text-white flex items-center justify-center font-bold text-xl shadow-sm z-10 group-hover:scale-110 transition-transform duration-300">1</div>
+                        <div class="glass-card p-8 rounded-3xl transition-colors hover:bg-white/80 dark:hover:bg-gray-800/80">
+                            <h3 class="text-2xl font-bold mb-4">机架加工</h3>
+                            <p class="text-gray-600 dark:text-gray-300 leading-relaxed">
+                                准备两把 30cm 有机玻璃直尺。在中心位置精确测量并打出 4 个安装孔。使用 M3 螺丝和防滑螺母将两把直尺垂直交叉固定，形成稳固的X型结构。
+                            </p>
+                        </div>
+                    </div>
+                    
+                    <div class="relative pl-24 group">
+                        <div class="absolute left-0 top-0 w-14 h-14 rounded-full bg-white dark:bg-black border-4 border-gray-100 dark:border-gray-800 text-black dark:text-white flex items-center justify-center font-bold text-xl shadow-sm z-10 group-hover:scale-110 transition-transform duration-300">2</div>
+                        <div class="glass-card p-8 rounded-3xl transition-colors hover:bg-white/80 dark:hover:bg-gray-800/80">
+                            <h3 class="text-2xl font-bold mb-4">动力安装 & 焊接</h3>
+                            <p class="text-gray-600 dark:text-gray-300 leading-relaxed">
+                                将电机安装在直尺末端。使用扎带将 30A 电调固定在机臂上。
+                                关键步骤是将四个电调的电源线汇聚焊接至 XT60 插头，务必做好热缩管绝缘处理。
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="relative pl-24 group">
+                        <div class="absolute left-0 top-0 w-14 h-14 rounded-full bg-white dark:bg-black border-4 border-gray-100 dark:border-gray-800 text-black dark:text-white flex items-center justify-center font-bold text-xl shadow-sm z-10 group-hover:scale-110 transition-transform duration-300">3</div>
+                        <div class="glass-card p-8 rounded-3xl transition-colors hover:bg-white/80 dark:hover:bg-gray-800/80">
+                            <h3 class="text-2xl font-bold mb-4">飞控接线与调参</h3>
+                            <p class="text-gray-600 dark:text-gray-300 leading-relaxed">
+                                将 F3 飞控固定在机架中心。连接电调信号线与接收机。
+                                连接电脑使用 Betaflight 软件刷写固件，校准水平仪，配置接收机通道和 PID 参数。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <footer class="py-12 text-center text-sm text-gray-400 font-medium">
+            <p>&copy; 2024 Ruler FPV Project. Designed with passion.</p>
+        </footer>
+    </div>
+
+    <!-- Gallery View -->
+    <div id="gallery-view" class="view-container view-hidden fixed inset-0 pt-32 px-4 pb-12 overflow-y-auto bg-gray-50/90 dark:bg-black/90 backdrop-blur-xl z-40">
+        <div class="max-w-7xl mx-auto">
+            <h1 class="text-5xl font-bold mb-3 text-center">飞行记录</h1>
+            <p class="text-center text-gray-500 dark:text-gray-400 mb-16 text-lg">从零组装到冲上云霄的全过程</p>
+            
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8" id="gallery-grid">
+                <!-- Content generated by JS -->
+            </div>
+
+            <div class="text-center mt-20 pb-20">
+                <button onclick="handleNav('home-view')" class="glass-nav px-8 py-3 rounded-full hover:bg-black hover:text-white dark:hover:bg-white dark:hover:text-black transition-all font-medium shadow-lg active:scale-95 cursor-pointer">
+                    返回主页
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // === UI Logic ===
+        
+        function handleNav(target) {
+            const home = document.getElementById('home-view');
+            const gallery = document.getElementById('gallery-view');
+            
+            if (target === 'gallery') {
+                home.classList.add('view-hidden');
+                home.classList.remove('view-visible');
+                gallery.classList.remove('view-hidden');
+                gallery.classList.add('view-visible');
+                initGallery();
+                window.scrollTo({top:0, behavior: 'smooth'});
+            } else {
+                gallery.classList.add('view-hidden');
+                gallery.classList.remove('view-visible');
+                home.classList.remove('view-hidden');
+                home.classList.add('view-visible');
+                
+                if (target !== 'home-view') {
+                    setTimeout(() => {
+                        const el = document.getElementById(target);
+                        if(el) el.scrollIntoView({behavior: 'smooth'});
+                    }, 100);
+                } else {
+                    window.scrollTo({top:0, behavior: 'smooth'});
+                }
+            }
+        }
+
+        const mobileBtn = document.getElementById('mobile-menu-btn');
+        const mobileMenu = document.getElementById('mobile-menu');
+        mobileBtn.addEventListener('click', () => {
+            if (mobileMenu.style.maxHeight) { 
+                mobileMenu.style.maxHeight = null; 
+                mobileMenu.style.opacity = '0'; 
+            } else { 
+                mobileMenu.style.maxHeight = mobileMenu.scrollHeight + "px"; 
+                mobileMenu.style.opacity = '1'; 
+            }
+        });
+        function closeMobileMenu() { mobileMenu.style.maxHeight = null; mobileMenu.style.opacity = '0'; }
+
+        function moveIndicator(el) {
+            const indicator = document.getElementById('nav-indicator');
+            const rect = el.getBoundingClientRect();
+            const parentRect = el.parentElement.getBoundingClientRect();
+            indicator.style.width = `${rect.width}px`;
+            indicator.style.transform = `translateX(${rect.left - parentRect.left}px)`;
+            indicator.style.opacity = '1';
+        }
+
+        function toggleDarkMode() { document.documentElement.classList.toggle('dark'); updateTheme3D(); }
+
+        const galleryConfig = [
+            { id: 1, type: 'img', src: '1.jpg' },
+            { id: 2, type: 'img', src: '2.jpg' },
+            { id: 3, type: 'img', src: '3.jpg' },
+            { id: 4, type: 'img', src: '4.jpg' },
+            { id: 5, type: 'img', src: '5.jpg' },
+            { id: 6, type: 'img', src: '6.jpg' },
+            { id: 7, type: 'img', src: '7.jpg' },
+            { id: 8, type: 'video', src: '8.mp4' },
+        ];
+        function initGallery() {
+            const grid = document.getElementById('gallery-grid');
+            if(grid.children.length > 0) return;
+            galleryConfig.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'gallery-item glass-card rounded-3xl aspect-square relative cursor-pointer group overflow-hidden';
+                let mediaHtml = item.type === 'video' ? 
+                    `<video src="${item.src}" class="gallery-media w-full h-full object-cover" loop muted playsinline onmouseover="let p = this.play(); if(p) p.catch(e=>{})" onmouseout="this.pause()"></video><div class="absolute top-4 right-4 w-10 h-10 bg-white/20 rounded-full flex items-center justify-center text-white backdrop-blur-md border border-white/20"><i class="fa-solid fa-play text-sm pl-0.5"></i></div>` : 
+                    `<img src="${item.src}" class="gallery-media w-full h-full object-cover" onerror="this.style.display='none'; this.parentElement.innerHTML += '<div class=\'flex items-center justify-center h-full text-gray-400\'><i class=\'fa-solid fa-image text-4xl\'></i></div>'">`;
+                div.innerHTML = `${mediaHtml}`;
+                grid.appendChild(div);
+            });
+        }
+
+        // === Three.js Logic ===
+        let scene, camera, renderer;
+        let droneGroup, remoteGroup, props = [], clouds = [];
+        let targetCameraZ = 18;
+        let mouseX = 0, mouseY = 0;
+        let battery = null;
+
+        function createRulerTexture() {
+            const canvas = document.createElement('canvas'); canvas.width = 2048; canvas.height = 256;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = 'rgba(230, 245, 255, 0.1)'; ctx.fillRect(0, 0, 2048, 256);
+            ctx.fillStyle = '#000000'; ctx.strokeStyle = '#000000'; ctx.font = 'bold 40px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+            const padding = 50; const rulerLength = 30; const effectiveWidth = 2048 - 2 * padding; const pxPerCm = effectiveWidth / rulerLength;
+            for(let i = 0; i <= rulerLength; i++) {
+                const x = padding + i * pxPerCm;
+                ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, 70); ctx.stroke();
+                if (i > 0 && i < 30) ctx.fillText(i.toString(), x, 80);
+                if (i < rulerLength) {
+                    const pxPerMm = pxPerCm / 10;
+                    for(let j = 1; j < 10; j++) {
+                        const mx = x + j * pxPerMm;
+                        const h = (j === 5) ? 45 : 25;
+                        ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(mx, 0); ctx.lineTo(mx, h); ctx.stroke();
+                    }
+                }
+            }
+            const tex = new THREE.CanvasTexture(canvas); tex.anisotropy = 16; return tex;
+        }
+
+        function createScreenTexture() {
+            const canvas = document.createElement('canvas'); canvas.width = 512; canvas.height = 256;
+            const ctx = canvas.getContext('2d');
+            const grd = ctx.createLinearGradient(0, 0, 0, 256);
+            grd.addColorStop(0, '#a8e6cf'); grd.addColorStop(1, '#86efac');
+            ctx.fillStyle = grd; ctx.fillRect(0, 0, 512, 256);
+            ctx.fillStyle = '#000'; ctx.font = 'bold 36px monospace';
+            ctx.fillText("AFHDS 2A", 20, 50);
+            ctx.font = '28px monospace';
+            ctx.fillText("MODE: STABILIZE", 20, 100);
+            ctx.fillText("TX: 5.8V", 20, 140);
+            ctx.fillText("RX: 11.4V", 280, 140);
+            ctx.fillText("THR: 0%", 20, 220);
+            ctx.strokeRect(20, 180, 200, 10); ctx.fillRect(110, 180, 20, 10);
+            ctx.strokeRect(280, 180, 200, 10); ctx.fillRect(370, 180, 20, 10);
+            const tex = new THREE.CanvasTexture(canvas); return tex;
+        }
+
+        function init3D() {
+            const container = document.getElementById('canvas-container');
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 10, 20); camera.lookAt(0, 0, 0);
+            renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            renderer.outputEncoding = THREE.sRGBEncoding;
+            container.appendChild(renderer.domElement);
+
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.7); scene.add(ambientLight);
+            const dirLight = new THREE.DirectionalLight(0xffffff, 1.0); dirLight.position.set(15, 30, 15); dirLight.castShadow = true;
+            dirLight.shadow.mapSize.width = 2048; dirLight.shadow.mapSize.height = 2048; scene.add(dirLight);
+            const rimLight = new THREE.SpotLight(0x007AFF, 2); rimLight.position.set(-20, 10, -10); rimLight.lookAt(0,0,0); scene.add(rimLight);
+
+            createEnvironment(); createRulerDrone(); createRealisticRemote();
+
+            window.addEventListener('resize', onWindowResize, false);
+            window.addEventListener('scroll', onScroll, false);
+            document.addEventListener('mousemove', onMouseMove, false);
+            updateTheme3D();
+            
+            setTimeout(() => { document.getElementById('loading-screen').style.opacity = '0'; setTimeout(() => document.getElementById('loading-screen').style.visibility = 'hidden', 800); }, 800);
+            animate();
+        }
+
+        function createRulerDrone() {
+            droneGroup = new THREE.Group(); droneGroup.position.set(-3, 2, 0);
+            const rulerMat = new THREE.MeshPhysicalMaterial({ map: createRulerTexture(), color: 0xffffff, transparent: true, opacity: 0.95, roughness: 0.1, transmission: 0.4, thickness: 1.0, clearcoat: 1.0, side: THREE.DoubleSide });
+            const motorGold = new THREE.MeshStandardMaterial({ color: 0xD4AF37, metalness: 0.8, roughness: 0.3 });
+            const motorSilver = new THREE.MeshStandardMaterial({ color: 0xeeeeee, metalness: 0.9, roughness: 0.2 });
+            const copper = new THREE.MeshStandardMaterial({ color: 0xb87333, roughness: 0.5 });
+            const propMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.6 });
+            const escMat = new THREE.MeshStandardMaterial({ color: 0xFFD700 });
+            const tieMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.8 });
+            const wireRed = new THREE.MeshStandardMaterial({ color: 0xcc0000 });
+            const wireBlack = new THREE.MeshStandardMaterial({ color: 0x222222 });
+            const battMat = new THREE.MeshStandardMaterial({ color: 0xcc0000, roughness: 0.4 });
+
+            const r1 = new THREE.Mesh(new THREE.BoxGeometry(6, 0.08, 0.6), rulerMat); r1.castShadow=true; droneGroup.add(r1);
+            const r2 = r1.clone(); r2.rotation.y=Math.PI/2; r2.position.y=0.08; droneGroup.add(r2);
+            const bolt = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.3, 16), motorSilver); bolt.position.y = 0.04; droneGroup.add(bolt);
+
+            const arms = [{x: 2.8, z: 0, rot: 0}, {x: -2.8, z: 0, rot: Math.PI}, {x: 0, z: 2.8, rot: -Math.PI/2}, {x: 0, z: -2.8, rot: Math.PI/2}];
+            arms.forEach(arm => {
+                const grp = new THREE.Group(); grp.position.set(arm.x, 0.08, arm.z); grp.rotation.y = arm.rot; droneGroup.add(grp);
+                
+                const mBase = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.15, 16), motorGold); mBase.position.y=0.075; mBase.castShadow=true; grp.add(mBase);
+                const mCoil = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 0.15, 16), copper); mCoil.position.y=0.2; grp.add(mCoil);
+                const mBell = new THREE.Mesh(new THREE.CylinderGeometry(0.31, 0.31, 0.25, 16), motorSilver); mBell.position.y=0.25; mBell.castShadow=true; grp.add(mBell);
+                const mNut = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.2, 16), motorSilver); mNut.position.y=0.5; grp.add(mNut);
+
+                const prop = new THREE.Group(); prop.position.y=0.45;
+                const bShp = new THREE.Shape(); bShp.moveTo(0,0); bShp.bezierCurveTo(0.5,0.2, 1.5,0.4, 2.5,0); bShp.bezierCurveTo(1.5,-0.4, 0.5,-0.2, 0,0);
+                const bGeo = new THREE.ExtrudeGeometry(bShp, {depth:0.02, bevelEnabled:false});
+                const b1 = new THREE.Mesh(bGeo, propMat); b1.rotation.x = -0.2; prop.add(b1);
+                const b2 = b1.clone(); b2.rotation.set(-0.2, Math.PI, 0); prop.add(b2);
+                grp.add(prop); props.push(prop);
+
+                const esc = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.15, 0.4), escMat); esc.position.set(-1.2, 0, 0); esc.castShadow=true; grp.add(esc);
+                
+                const tiePath = new THREE.CatmullRomCurve3([new THREE.Vector3(0, 0.15, 0.22), new THREE.Vector3(0, -0.15, 0.22), new THREE.Vector3(0, -0.15, -0.22), new THREE.Vector3(0, 0.15, -0.22)], true, 'catmullrom', 0.1);
+                const tieGeo = new THREE.TubeGeometry(tiePath, 20, 0.03, 4, true);
+                const tie1 = new THREE.Mesh(tieGeo, tieMat); tie1.rotation.y=Math.PI/2; tie1.scale.set(1,1,0.95); tie1.position.set(-1.0,0,0); grp.add(tie1);
+                const tie2 = tie1.clone(); tie2.position.set(-1.4,0,0); grp.add(tie2);
+                
+                const wRed = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([new THREE.Vector3(-1.6, 0, 0.1), new THREE.Vector3(-2.5, 0.1, 0.1)]), 8, 0.02, 4, false), wireRed); grp.add(wRed);
+                const wBlk = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([new THREE.Vector3(-1.6, 0, -0.1), new THREE.Vector3(-2.5, 0.1, -0.1)]), 8, 0.02, 4, false), wireBlack); grp.add(wBlk);
+                for(let w=0; w<3; w++) {
+                    const z = (w-1)*0.1;
+                    const mPath = new THREE.CatmullRomCurve3([new THREE.Vector3(-0.8, 0, z), new THREE.Vector3(-0.4, 0.05, z*0.5), new THREE.Vector3(0, 0.05, z*0.2)]);
+                    const wMotor = new THREE.Mesh(new THREE.TubeGeometry(mPath, 8, 0.015, 4, false), wireBlack); grp.add(wMotor);
+                }
+            });
+
+            const fc = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.05, 0.8), new THREE.MeshStandardMaterial({color: 0x10b981})); fc.position.y=0.18; droneGroup.add(fc);
+            const chip = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.02, 0.3), tieMat); chip.position.y=0.04; fc.add(chip);
+            
+            const batt = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.5, 0.7), battMat); batt.position.y=-0.25; droneGroup.add(batt);
+            const strap = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 0.2, 32, 1, true), tieMat);
+            strap.rotation.z=Math.PI/2; strap.scale.x=0.6; strap.position.y=0.1; batt.add(strap);
+            
+            battery = batt;
+            scene.add(droneGroup);
+        }
+
+        function createRealisticRemote() {
+            remoteGroup = new THREE.Group();
+            remoteGroup.position.set(3.5, -1, 1);
+            remoteGroup.rotation.set(-0.2, 0.5, 0);
+
+            const bodyMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.7 });
+            const gripMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9 });
+            const metalMat = new THREE.MeshStandardMaterial({ color: 0xdddddd, metalness: 0.8, roughness: 0.2 });
+            const screenMat = new THREE.MeshBasicMaterial({ map: createScreenTexture() });
+
+            const shape = new THREE.Shape();
+            const w = 1.6, h = 1.2; shape.moveTo(-w, -h); shape.lineTo(w, -h); shape.lineTo(w, h*0.7); shape.lineTo(w*0.7, h); shape.lineTo(-w*0.7, h); shape.lineTo(-w, h*0.7);
+            const body = new THREE.Mesh(new THREE.ExtrudeGeometry(shape, {depth: 0.6, bevelEnabled:true, bevelSize:0.1, bevelThickness:0.1}), bodyMat);
+            body.castShadow = true; body.position.z = -0.3; remoteGroup.add(body);
+
+            const gL = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 2.0, 16, 1, false, Math.PI, Math.PI), gripMat); gL.position.x = -1.6; gL.rotation.z = Math.PI; remoteGroup.add(gL);
+            const gR = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 2.0, 16, 1, false, 0, Math.PI), gripMat); gR.position.x = 1.6; remoteGroup.add(gR);
+
+            const hPath = new THREE.CatmullRomCurve3([new THREE.Vector3(-0.6,1.3,0), new THREE.Vector3(-0.6,1.7,-0.2), new THREE.Vector3(0.6,1.7,-0.2), new THREE.Vector3(0.6,1.3,0)]);
+            const handle = new THREE.Mesh(new THREE.TubeGeometry(hPath, 20, 0.08, 8, false), metalMat); remoteGroup.add(handle);
+
+            const scrFrame = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.8, 0.05), bodyMat); scrFrame.position.set(0, -0.5, 0.42); remoteGroup.add(scrFrame);
+            const scr = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.6), screenMat); scr.position.z = 0.03; scrFrame.add(scr);
+
+            const jBase = new THREE.CylinderGeometry(0.4, 0.45, 0.1, 32);
+            const jL = new THREE.Mesh(jBase, bodyMat); jL.rotation.x=Math.PI/2; jL.position.set(-0.8, 0.3, 0.3); remoteGroup.add(jL);
+            const jR = jL.clone(); jR.position.set(0.8, 0.3, 0.3); remoteGroup.add(jR);
+            
+            const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.6), metalMat); stick.rotation.x=Math.PI/2; stick.position.z=0.35;
+            const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.04, 0.15, 16), metalMat); crown.rotation.x=Math.PI/2; crown.position.y=0.3; stick.add(crown);
+            jL.add(stick.clone()); jR.add(stick.clone());
+
+            const sw = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.3), metalMat); sw.rotation.x=0.5;
+            sw.position.set(-1.2, 1.1, 0.1); remoteGroup.add(sw.clone()); sw.position.set(1.2, 1.1, 0.1); remoteGroup.add(sw.clone());
+
+            const ant = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.15, 0.15), bodyMat); ant.position.set(0, 1.4, 0); remoteGroup.add(ant);
+            scene.add(remoteGroup);
+        }
+
+        function createEnvironment() {
+            const cloudMat = new THREE.MeshLambertMaterial({ color: 0xffffff, transparent: true, opacity: 0.7 });
+            for (let i=0; i<15; i++) {
+                const grp = new THREE.Group();
+                for(let j=0; j<4; j++) {
+                    const m = new THREE.Mesh(new THREE.DodecahedronGeometry(Math.random()+1), cloudMat);
+                    m.position.set(Math.random()*3, Math.random(), Math.random()); grp.add(m);
+                }
+                grp.position.set((Math.random()-0.5)*80, (Math.random()-0.5)*30, -20 - Math.random()*30);
+                clouds.push(grp); scene.add(grp);
+            }
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function onScroll() {
+            const scrollY = window.scrollY;
+            targetCameraZ = 18 - (scrollY * 0.008);
+            droneGroup.rotation.y = scrollY * 0.001;
+            remoteGroup.position.y = -1 - scrollY * 0.005;
+            remoteGroup.rotation.y = 0.5 - scrollY * 0.001;
+        }
+
+        function onMouseMove(e) {
+            mouseX = (e.clientX / window.innerWidth) * 2 - 1;
+            mouseY = -(e.clientY / window.innerHeight) * 2 + 1;
+        }
+
+        function updateTheme3D() {
+            const isDark = document.documentElement.classList.contains('dark');
+            scene.background = new THREE.Color(isDark ? 0x0f172a : 0x87CEEB);
+            scene.fog = new THREE.Fog(isDark ? 0x0f172a : 0x87CEEB, 10, 70);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const time = Date.now() * 0.001;
+            props.forEach((p,i) => p.rotation.y += (i%2==0 ? 0.8 : -0.8));
+            droneGroup.position.y = 2 + Math.sin(time * 1.2) * 0.1 + Math.cos(time * 0.5) * 0.05;
+            droneGroup.rotation.x = mouseY * 0.15 + Math.sin(time) * 0.02;
+            droneGroup.rotation.z = -mouseX * 0.15 + Math.cos(time) * 0.02;
+            clouds.forEach(c => { c.position.x += 0.01; if(c.position.x > 40) c.position.x = -40; });
+            camera.position.z += (targetCameraZ - camera.position.z) * 0.03;
+            renderer.render(scene, camera);
+        }
+
+        init3D();
+    </script>
+</body>
+</html>
